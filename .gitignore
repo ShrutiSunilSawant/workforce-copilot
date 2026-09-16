@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+venv/
+__pycache__/
+*.pyc
+node_modules/
+workforceiq.db
+frontend/dist/
+.vercel/
+.DS_Store
+*.log
+vector_db/
+backend/vector_db/
