@@ -4,12 +4,12 @@
 # ============================================================
 
 # ---- Web Framework ----
-fastapi==0.110.0
-uvicorn[standard]==0.27.1
-python-multipart==0.0.9
-pydantic==2.6.3
-pydantic-settings==2.2.1
-httpx==0.27.0
+fastapi==0.139.0
+uvicorn[standard]==0.50.2
+python-multipart==0.0.32
+pydantic==2.13.4
+pydantic-settings==2.14.2
+httpx==0.28.1
 
 # ---- Database ----
 sqlalchemy==2.0.27
@@ -70,10 +70,13 @@ seaborn==0.13.2
 plotly==5.19.0
 
 # ---- MCP ----
-fastmcp>=3.4.3
+# Pinned <3 deliberately: fastmcp 3.x requires packaging>=24, which conflicts
+# with langchain-core 0.1.42's packaging<24 ceiling. FastMCP's own docs
+# recommend pinning <3 in production anyway until 3.0 stabilizes.
+fastmcp==2.14.7
 
 # ---- Utilities ----
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 loguru==0.7.2
 tenacity==8.2.3
 tqdm==4.66.2
@@ -89,4 +92,4 @@ redis==5.0.2
 # ---- Testing ----
 pytest==8.0.2
 pytest-asyncio==0.23.5
-httpx==0.27.0
+httpx==0.28.1
