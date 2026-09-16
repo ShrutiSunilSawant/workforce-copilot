@@ -1,7 +1,9 @@
 """WorkforceIQ - AI Insights API"""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
+from database.models import User
+from auth.utils import get_current_user
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -13,7 +15,7 @@ class InsightRequest(BaseModel):
 
 
 @router.post("/generate")
-async def generate_insight(request: InsightRequest):
+async def generate_insight(request: InsightRequest, current_user: User = Depends(get_current_user)):
     """Generate AI-powered workforce insight"""
     context = {
         "department": request.department or "all departments",
@@ -42,7 +44,7 @@ async def generate_insight(request: InsightRequest):
 
 
 @router.get("/cards")
-async def get_insight_cards():
+async def get_insight_cards(current_user: User = Depends(get_current_user)):
     """Get pre-generated insight cards for dashboard"""
     return {
         "insights": [

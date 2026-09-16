@@ -1,8 +1,10 @@
 """WorkforceIQ - Executive Report API"""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
+from database.models import User
+from auth.utils import get_current_user
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -15,7 +17,7 @@ class ReportRequest(BaseModel):
 
 
 @router.post("/executive")
-async def generate_executive_report(request: ReportRequest):
+async def generate_executive_report(request: ReportRequest, current_user: User = Depends(get_current_user)):
     """Generate AI executive workforce intelligence report"""
     metrics = {
         "total_employees": 1500,

@@ -3,10 +3,12 @@ WorkforceIQ - AI Copilot Chatbot API
 Conversational HR analytics with memory and RAG
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 import uuid
+from database.models import User
+from auth.utils import get_current_user
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -89,7 +91,7 @@ def _get_mock_context_data() -> dict:
 
 
 @router.post("/", response_model=ChatResponse)
-async def chat(request: ChatMessage):
+async def chat(request: ChatMessage, current_user: User = Depends(get_current_user)):
     """
     Main AI Copilot chat endpoint.
     Supports multi-turn conversation with memory.
@@ -104,33 +106,38 @@ async def chat(request: ChatMessage):
     # Add user message to history
     history.append({"role": "user", "content": request.message})
     
+    # Company-scoped features (RAG documents, live MCP data) only make sense
+    # for company accounts — the platform-owner super_admin has none of these.
+    company_id = current_user.company_id
+
     # Try RAG retrieval first
     rag_sources = []
     rag_context = ""
-    if request.include_rag:
+    if request.include_rag and company_id is not None:
         try:
             from rag.pipeline import get_rag_pipeline
-            rag = get_rag_pipeline()
+            rag = get_rag_pipeline(company_id)
             rag_result = rag.query(request.message)
             if rag_result.get("context_used"):
                 rag_context = f"\n\nRAG Context from HR Documents:\n{rag_result['answer']}"
                 rag_sources = rag_result.get("sources", [])
         except Exception:
             pass
-    
+
     # Call MCP tool for live grounding context
     mcp_context = ""
     mcp_tool_used = ""
-    try:
-        from agents.mcp_client import call_relevant_tool
-        mcp_result = call_relevant_tool(request.message, request.department_filter or "")
-        mcp_tool_used = mcp_result.get("tool", "")
-        tool_data = mcp_result.get("result", {})
-        if tool_data and "error" not in tool_data:
-            lines = "\n".join(f"  {k}: {v}" for k, v in tool_data.items())
-            mcp_context = f"\n\nLive Data from MCP Tool [{mcp_tool_used}]:\n{lines}"
-    except Exception:
-        pass
+    if company_id is not None:
+        try:
+            from agents.mcp_client import call_relevant_tool
+            mcp_result = call_relevant_tool(request.message, company_id, request.department_filter or "")
+            mcp_tool_used = mcp_result.get("tool", "")
+            tool_data = mcp_result.get("result", {})
+            if tool_data and "error" not in tool_data:
+                lines = "\n".join(f"  {k}: {v}" for k, v in tool_data.items())
+                mcp_context = f"\n\nLive Data from MCP Tool [{mcp_tool_used}]:\n{lines}"
+        except Exception:
+            pass
 
     # Fall back to mock context if MCP unavailable
     context_data = _get_mock_context_data()
@@ -179,7 +186,7 @@ WorkforceIQ Copilot:"""
 
 
 @router.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
+async def get_conversation(conversation_id: str, current_user: User = Depends(get_current_user)):
     """Get conversation history"""
     if conversation_id not in _conversations:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -187,7 +194,7 @@ async def get_conversation(conversation_id: str):
 
 
 @router.delete("/conversations/{conversation_id}")
-async def clear_conversation(conversation_id: str):
+async def clear_conversation(conversation_id: str, current_user: User = Depends(get_current_user)):
     """Clear conversation history"""
     if conversation_id in _conversations:
         del _conversations[conversation_id]

@@ -1,11 +1,9 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
-from database.models import Base, User, Employee, RoleEnum
+from database.models import Base, User, RoleEnum
 from passlib.context import CryptContext
 import os
-import json
-import pandas as pd
 from loguru import logger
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -33,75 +31,34 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        # Seed default admin user
-        admin_email = os.environ["SEED_ADMIN_EMAIL"]
-        admin_password = os.environ["SEED_ADMIN_PASSWORD"]
-        existing_admin = db.query(User).filter(User.email == admin_email).first()
-        if not existing_admin:
-            admin = User(
-                email=admin_email,
-                full_name="HR Admin",
-                hashed_password=pwd_context.hash(admin_password),
-                role=RoleEnum.admin,
-                department=None,
-                is_active=True
-            )
-            db.add(admin)
-            logger.info(f"✅ Default admin created: {admin_email}")
-
-        # Seed default manager users
-        manager_password = os.environ["SEED_MANAGER_PASSWORD"]
-        managers = [
-            {"email": "eng.manager@workforceiq.com", "name": "Engineering Manager", "dept": "Engineering"},
-            {"email": "sales.manager@workforceiq.com", "name": "Sales Manager", "dept": "Sales"},
-            {"email": "hr.manager@workforceiq.com", "name": "HR Manager", "dept": "HR"},
-            {"email": "finance.manager@workforceiq.com", "name": "Finance Manager", "dept": "Finance"},
-        ]
-        for m in managers:
-            existing = db.query(User).filter(User.email == m["email"]).first()
-            if not existing:
-                manager = User(
-                    email=m["email"],
-                    full_name=m["name"],
-                    hashed_password=pwd_context.hash(manager_password),
-                    role=RoleEnum.manager,
-                    department=m["dept"],
-                    is_active=True
+        # One-time bootstrap: create the platform owner's super_admin account,
+        # but ONLY if the users table is completely empty. This is what lets
+        # you log in for the first time (to then provision real companies via
+        # POST /api/auth/companies) without shipping any seeded demo accounts.
+        # Once any user exists, this never runs again — even if the env vars
+        # are still set — so it can't be used to inject a second super_admin.
+        if db.query(User).count() == 0:
+            bootstrap_email = os.environ.get("BOOTSTRAP_SUPERADMIN_EMAIL")
+            bootstrap_password = os.environ.get("BOOTSTRAP_SUPERADMIN_PASSWORD")
+            if bootstrap_email and bootstrap_password:
+                superadmin = User(
+                    email=bootstrap_email,
+                    full_name="Platform Owner",
+                    hashed_password=pwd_context.hash(bootstrap_password),
+                    role=RoleEnum.super_admin,
+                    department=None,
+                    company_id=None,
+                    is_active=True,
                 )
-                db.add(manager)
+                db.add(superadmin)
+                db.commit()
+                logger.info(f"✅ Bootstrap super_admin created: {bootstrap_email}")
+            else:
+                logger.warning(
+                    "⚠️ No users exist yet and BOOTSTRAP_SUPERADMIN_EMAIL/PASSWORD "
+                    "are not set — nobody will be able to log in until you set them."
+                )
 
-        # Seed employees from CSV if table is empty
-        emp_count = db.query(Employee).count()
-        if emp_count == 0:
-            csv_path = os.environ["HR_DATA_CSV_PATH"]
-            if os.path.exists(csv_path):
-                df = pd.read_csv(csv_path)
-                for _, row in df.iterrows():
-                    emp = Employee(
-                        employee_id=str(row.get("EmployeeNumber", f"EMP{_:05d}")),
-                        age=int(row.get("Age", 30)),
-                        department=str(row.get("Department", "Engineering")),
-                        job_role=str(row.get("JobRole", "Engineer")),
-                        monthly_income=float(row.get("MonthlyIncome", 5000)),
-                        over_time=str(row.get("OverTime", "No")),
-                        job_satisfaction=int(row.get("JobSatisfaction", 3)),
-                        years_at_company=int(row.get("YearsAtCompany", 3)),
-                        years_since_last_promotion=int(row.get("YearsSinceLastPromotion", 1)),
-                        work_life_balance=int(row.get("WorkLifeBalance", 3)),
-                        environment_satisfaction=int(row.get("EnvironmentSatisfaction", 3)),
-                        relationship_satisfaction=int(row.get("RelationshipSatisfaction", 3)),
-                        performance_rating=int(row.get("PerformanceRating", 3)),
-                        distance_from_home=int(row.get("DistanceFromHome", 10)),
-                        education=int(row.get("Education", 3)),
-                        num_companies_worked=int(row.get("NumCompaniesWorked", 2)),
-                        total_working_years=int(row.get("TotalWorkingYears", 8)),
-                        training_times_last_year=int(row.get("TrainingTimesLastYear", 2)),
-                        attrition=str(row.get("Attrition", "No")),
-                    )
-                    db.add(emp)
-                logger.info(f"✅ Seeded {len(df)} employees from CSV")
-
-        db.commit()
         logger.info("✅ Database initialized successfully")
     except Exception as e:
         db.rollback()

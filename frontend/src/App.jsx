@@ -12,6 +12,7 @@ import AgentsPage from "./pages/AgentsPage";
 import ReportsPage from "./pages/ReportsPage";
 import LoginPage from "./pages/LoginPage";
 import RetrainPage from "./pages/RetrainPage";
+import CompaniesPage from "./pages/CompaniesPage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -26,22 +27,32 @@ function ProtectedRoute({ children }) {
 
 function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
       <main className={`flex-1 overflow-hidden flex flex-col transition-all duration-300 ${sidebarOpen ? "ml-64" : "ml-16"}`}>
         <div className="flex-1 overflow-y-auto p-6">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/copilot" element={<Copilot />} />
-            <Route path="/attrition" element={<AttritionPage />} />
-            <Route path="/sentiment" element={<SentimentPage />} />
-            <Route path="/forecast" element={<ForecastPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/agents" element={<AgentsPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/retrain" element={<RetrainPage />} />
-          </Routes>
+          {isSuperAdmin ? (
+            // The platform owner isn't tied to a company — they only manage companies.
+            <Routes>
+              <Route path="/" element={<CompaniesPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          ) : (
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/copilot" element={<Copilot />} />
+              <Route path="/attrition" element={<AttritionPage />} />
+              <Route path="/sentiment" element={<SentimentPage />} />
+              <Route path="/forecast" element={<ForecastPage />} />
+              <Route path="/documents" element={<DocumentsPage />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/retrain" element={<RetrainPage />} />
+            </Routes>
+          )}
         </div>
       </main>
     </div>

@@ -47,7 +47,7 @@ export default function AttritionPage() {
     setLookupError(false);
     try {
       const employeeId = empId.trim().toUpperCase();
-      const res = await fetch(`/api/employees/${employeeId}`, {
+      const res = await fetch(apiUrl(`/api/employees/${employeeId}`), {
         credentials: "include",
       });
       if (res.ok) {

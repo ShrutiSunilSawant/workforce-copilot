@@ -41,10 +41,36 @@ def _import_ml():
     }
 
 
+# Default (shared) model paths — used for the CLI/offline training script,
+# and as a fallback baseline until a company retrains its own model.
 MODEL_PATH = Path("models/attrition_model.pkl")
 ENCODER_PATH = Path("models/label_encoders.pkl")
 SCALER_PATH = Path("models/scaler.pkl")
 FEATURE_COLS_PATH = Path("models/feature_cols.pkl")
+
+
+def _company_dir(company_id: Optional[int]) -> Path:
+    return Path(f"models/companies/{company_id}") if company_id is not None else Path("models")
+
+
+def model_paths(company_id: Optional[int] = None) -> dict:
+    """Per-company model artifact paths. Falls back to the shared default
+    paths when no per-company model has been trained yet."""
+    company_dir = _company_dir(company_id)
+    company_model = company_dir / "attrition_model.pkl"
+    if company_id is not None and company_model.exists():
+        return {
+            "model": company_model,
+            "encoders": company_dir / "label_encoders.pkl",
+            "feature_cols": company_dir / "feature_cols.pkl",
+            "explainer": company_dir / "explainer.pkl",
+        }
+    return {
+        "model": MODEL_PATH,
+        "encoders": ENCODER_PATH,
+        "feature_cols": FEATURE_COLS_PATH,
+        "explainer": Path("models/explainer.pkl"),
+    }
 
 CATEGORICAL_COLS = [
     "Department", "JobRole", "EducationField", "Gender",
@@ -110,8 +136,13 @@ def preprocess(df: pd.DataFrame, encoders: Optional[dict] = None, fit: bool = Tr
     return df[ALL_FEATURES], encoders
 
 
-def train_model(data_path: str = "datasets/hr_employee_data.csv"):
-    """Train the attrition prediction ensemble model"""
+def train_model(data_path: str = "datasets/hr_employee_data.csv", company_id: Optional[int] = None):
+    """Train the attrition prediction ensemble model.
+
+    When company_id is given, the trained artifacts are saved under
+    models/companies/{company_id}/ instead of the shared default path —
+    each company's model is trained only on its own data and never
+    overwrites another company's model."""
     ml = _import_ml()
     
     logger.info("📊 Loading training data...")
@@ -197,30 +228,39 @@ def train_model(data_path: str = "datasets/hr_employee_data.csv"):
         logger.info(f"  {feat}: {val:.4f}")
 
     # Save artifacts
-    Path("models").mkdir(exist_ok=True)
-    joblib.dump(ensemble, MODEL_PATH)
-    joblib.dump(encoders, ENCODER_PATH)
-    joblib.dump(ALL_FEATURES, FEATURE_COLS_PATH)
-    joblib.dump({"xgb": fitted_xgb, "shap_explainer": explainer, "mean_shap": mean_shap.to_dict()}, "models/explainer.pkl")
-    
-    logger.info(f"💾 Model saved to {MODEL_PATH}")
+    company_dir = _company_dir(company_id)
+    company_dir.mkdir(parents=True, exist_ok=True)
+    paths = model_paths(company_id) if company_id is None else {
+        "model": company_dir / "attrition_model.pkl",
+        "encoders": company_dir / "label_encoders.pkl",
+        "feature_cols": company_dir / "feature_cols.pkl",
+        "explainer": company_dir / "explainer.pkl",
+    }
+    joblib.dump(ensemble, paths["model"])
+    joblib.dump(encoders, paths["encoders"])
+    joblib.dump(ALL_FEATURES, paths["feature_cols"])
+    joblib.dump({"xgb": fitted_xgb, "shap_explainer": explainer, "mean_shap": mean_shap.to_dict()}, paths["explainer"])
+
+    logger.info(f"💾 Model saved to {paths['model']}")
     return {"auc": auc, "f1": f1}
 
 
-def load_model():
-    """Load trained model artifacts"""
-    if not MODEL_PATH.exists():
+def load_model(company_id: Optional[int] = None):
+    """Load trained model artifacts for a given company (or the shared
+    default model if that company hasn't trained its own yet)."""
+    paths = model_paths(company_id)
+    if not paths["model"].exists():
         raise FileNotFoundError(
-            f"Model not found at {MODEL_PATH}. Run: python backend/models/attrition_model.py"
+            f"Model not found at {paths['model']}. Run: python backend/models/attrition_model.py"
         )
     return (
-        joblib.load(MODEL_PATH),
-        joblib.load(ENCODER_PATH),
-        joblib.load(FEATURE_COLS_PATH),
+        joblib.load(paths["model"]),
+        joblib.load(paths["encoders"]),
+        joblib.load(paths["feature_cols"]),
     )
 
 
-def predict_attrition(employee_data: dict) -> dict:
+def predict_attrition(employee_data: dict, company_id: Optional[int] = None) -> dict:
     """
     Predict attrition risk for a single employee.
     
@@ -234,8 +274,8 @@ def predict_attrition(employee_data: dict) -> dict:
             "explanation": "..."
         }
     """
-    model, encoders, feature_cols = load_model()
-    
+    model, encoders, feature_cols = load_model(company_id=company_id)
+
     df = pd.DataFrame([employee_data])
     X, _ = preprocess(df, encoders=encoders, fit=False)
     
@@ -243,7 +283,7 @@ def predict_attrition(employee_data: dict) -> dict:
     
     # Load SHAP explainer
     try:
-        explainer_data = joblib.load("models/explainer.pkl")
+        explainer_data = joblib.load(model_paths(company_id)["explainer"])
         xgb_model = explainer_data["xgb"]
         explainer = explainer_data["shap_explainer"]
         shap_values = explainer.shap_values(X)[0]

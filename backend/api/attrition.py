@@ -5,9 +5,11 @@ XGBoost + LightGBM ensemble with SHAP explainability
 
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from database.models import User
+from auth.utils import get_current_user, require_company_user
 
 router = APIRouter(prefix="/api", tags=["attrition"])
 attrition_router = router
@@ -137,7 +139,7 @@ def _get_shap_heuristic(emp: dict) -> dict:
 
 
 @router.post("/attrition", response_model=PredictionResponse)
-async def predict_attrition(employee: EmployeeData):
+async def predict_attrition(employee: EmployeeData, current_user: User = Depends(get_current_user)):
     """
     Predict attrition risk for a single employee.
     Uses XGBoost + LightGBM ensemble with SHAP explainability.
@@ -193,7 +195,7 @@ async def predict_attrition(employee: EmployeeData):
 
 
 @router.post("/bulk")
-async def bulk_predict(request: BulkPredictionRequest):
+async def bulk_predict(request: BulkPredictionRequest, current_user: User = Depends(get_current_user)):
     """
     Batch attrition prediction for multiple employees.
     Returns ranked list by risk probability.
@@ -226,7 +228,7 @@ async def bulk_predict(request: BulkPredictionRequest):
 
 
 @router.get("/department-risk")
-async def get_department_risk():
+async def get_department_risk(current_user: User = Depends(get_current_user)):
     """Get attrition risk breakdown by department"""
     return {
         "departments": [
@@ -243,7 +245,7 @@ async def get_department_risk():
 
 
 @router.get("/risk-factors")
-async def get_top_risk_factors():
+async def get_top_risk_factors(current_user: User = Depends(get_current_user)):
     """Get top attrition risk factors with SHAP importance scores"""
     return {
         "factors": [
@@ -265,12 +267,15 @@ async def get_top_risk_factors():
 from database.connection import get_db
 from database.models import Employee
 from sqlalchemy.orm import Session
-from fastapi import Depends
 
 @attrition_router.get("/employees/{employee_id}")
-async def get_employee(employee_id: str, db: Session = Depends(get_db)):
-    """Look up employee by ID and return their features for the attrition form"""
-    emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
+async def get_employee(employee_id: str, db: Session = Depends(get_db), current_user: User = Depends(require_company_user)):
+    """Look up employee by ID (within the caller's own company) and return
+    their features for the attrition form"""
+    emp = db.query(Employee).filter(
+        Employee.employee_id == employee_id,
+        Employee.company_id == current_user.company_id,
+    ).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     return {

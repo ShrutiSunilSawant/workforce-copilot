@@ -38,12 +38,14 @@ def _call_tool(tool_name: str, arguments: dict) -> dict:
 
 
 # ── Public helpers ──────────────────────────────────────────────────────────
+# Every tool call is scoped to the caller's own company_id so the LLM's
+# "live data" grounding can never surface another company's employees.
 
 def mcp_predict_attrition(department: str, age: int, monthly_income: int,
                            years_at_company: int, job_satisfaction: int,
                            work_life_balance: int, over_time: str,
                            years_since_last_promotion: int,
-                           environment_satisfaction: int) -> dict:
+                           environment_satisfaction: int, company_id: int) -> dict:
     return _call_tool("predict_attrition", {
         "department": department,
         "age": age,
@@ -54,6 +56,7 @@ def mcp_predict_attrition(department: str, age: int, monthly_income: int,
         "over_time": over_time,
         "years_since_last_promotion": years_since_last_promotion,
         "environment_satisfaction": environment_satisfaction,
+        "company_id": company_id,
     })
 
 
@@ -61,16 +64,16 @@ def mcp_analyze_sentiment(text: str, department: str = "") -> dict:
     return _call_tool("analyze_sentiment", {"text": text, "department": department})
 
 
-def mcp_query_hr_policy(question: str) -> dict:
-    return _call_tool("query_hr_policy", {"question": question})
+def mcp_query_hr_policy(question: str, company_id: int) -> dict:
+    return _call_tool("query_hr_policy", {"question": question, "company_id": company_id})
 
 
-def mcp_get_workforce_stats() -> dict:
-    return _call_tool("get_workforce_stats", {})
+def mcp_get_workforce_stats(company_id: int) -> dict:
+    return _call_tool("get_workforce_stats", {"company_id": company_id})
 
 
-def mcp_get_department_breakdown(department: str = "") -> dict:
-    return _call_tool("get_department_breakdown", {"department": department})
+def mcp_get_department_breakdown(company_id: int, department: str = "") -> dict:
+    return _call_tool("get_department_breakdown", {"company_id": company_id, "department": department})
 
 
 def detect_intent(message: str) -> str:
@@ -87,19 +90,20 @@ def detect_intent(message: str) -> str:
     return "get_workforce_stats"
 
 
-def call_relevant_tool(message: str, department_filter: str = "") -> dict:
+def call_relevant_tool(message: str, company_id: int, department_filter: str = "") -> dict:
     """
-    Detect intent from a chat message and call the most relevant MCP tool.
+    Detect intent from a chat message and call the most relevant MCP tool,
+    scoped to the caller's own company.
     Returns structured tool result for injection into the LLM prompt.
     """
     intent = detect_intent(message)
     logger.info(f"MCP intent: {intent}")
 
     if intent == "query_hr_policy":
-        return {"tool": intent, "result": mcp_query_hr_policy(message)}
+        return {"tool": intent, "result": mcp_query_hr_policy(message, company_id)}
     elif intent == "analyze_sentiment":
         return {"tool": intent, "result": mcp_analyze_sentiment(message, department_filter)}
     elif intent == "get_department_breakdown":
-        return {"tool": intent, "result": mcp_get_department_breakdown(department_filter)}
+        return {"tool": intent, "result": mcp_get_department_breakdown(company_id, department_filter)}
     else:
-        return {"tool": intent, "result": mcp_get_workforce_stats()}
+        return {"tool": intent, "result": mcp_get_workforce_stats(company_id)}

@@ -25,12 +25,6 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  const fillDemo = (role) => {
-    if (role === "admin") { setEmail("admin@workforceiq.com"); }
-    else { setEmail("eng.manager@workforceiq.com"); }
-    setPassword("");
-  };
-
   return (
     <div className="min-h-screen bg-ink-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -92,24 +86,6 @@ export default function LoginPage() {
               {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in...</> : "Sign in"}
             </button>
           </form>
-
-          {/* Seeded accounts */}
-          <div className="mt-6 pt-6 border-t border-slate-800">
-            <p className="text-xs text-slate-500 mb-3 text-center">Seeded accounts</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => fillDemo("admin")}
-                className="text-xs px-3 py-2 rounded-lg border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 transition-colors">
-                Admin (All depts)
-              </button>
-              <button onClick={() => fillDemo("manager")}
-                className="text-xs px-3 py-2 rounded-lg border border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors">
-                Eng Manager
-              </button>
-            </div>
-            <p className="text-xs text-slate-600 text-center mt-3">
-              Enter the password configured for this account.
-            </p>
-          </div>
         </div>
       </div>
     </div>

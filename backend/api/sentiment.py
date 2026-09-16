@@ -6,10 +6,12 @@ Sentiment, RAG, Forecast, Insights, Reports
 # ============================================================
 # sentiment.py
 # ============================================================
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 import random
+from database.models import User
+from auth.utils import get_current_user
 
 # --- Sentiment API ---
 router = APIRouter(prefix="/api/sentiment", tags=["sentiment"])
@@ -24,7 +26,7 @@ class DepartmentSentimentRequest(BaseModel):
 
 
 @router.post("/analyze")
-async def analyze_sentiment(request: SentimentRequest):
+async def analyze_sentiment(request: SentimentRequest, current_user: User = Depends(get_current_user)):
     """Analyze sentiment in employee feedback text"""
     try:
         from models.sentiment_model import get_sentiment_analyzer
@@ -59,7 +61,7 @@ async def analyze_sentiment(request: SentimentRequest):
 
 
 @router.get("/department")
-async def get_department_sentiment():
+async def get_department_sentiment(current_user: User = Depends(get_current_user)):
     """Get pre-computed department morale scores"""
     return {
         "departments": [
@@ -78,7 +80,7 @@ async def get_department_sentiment():
 
 
 @router.get("/trends")
-async def get_sentiment_trends():
+async def get_sentiment_trends(current_user: User = Depends(get_current_user)):
     """Get sentiment trend over time"""
     months = ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"]
     base = 0.65

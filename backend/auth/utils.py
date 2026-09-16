@@ -4,7 +4,7 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, Query
 from database.connection import get_db
 from database.models import User, RoleEnum
 
@@ -49,6 +49,9 @@ def get_current_user(token: str = Depends(get_token_from_cookie), db: Session = 
     except JWTError:
         raise credentials_exception
 
+    # Re-fetch from DB rather than trusting the token's claims beyond the
+    # email — so a role/department/company change takes effect immediately
+    # instead of waiting for the token to expire.
     user = db.query(User).filter(User.email == email).first()
     if user is None or not user.is_active:
         raise credentials_exception
@@ -69,6 +72,36 @@ def require_admin_or_manager(current_user: User = Depends(get_current_user)) -> 
             detail="Access denied"
         )
     return current_user
+
+def require_super_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Platform-owner-only routes (e.g. provisioning new companies)."""
+    if current_user.role != RoleEnum.super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform owner access required"
+        )
+    return current_user
+
+def require_company_user(current_user: User = Depends(get_current_user)) -> User:
+    """Any authenticated user who belongs to a company (admin or manager,
+    not the super_admin). Use this on every route that reads or writes
+    company-scoped data (employees, documents, model versions, ...)."""
+    if current_user.role == RoleEnum.super_admin or current_user.company_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires a company account, not the platform-owner account"
+        )
+    return current_user
+
+def scoped_query(db: Session, model, current_user: User) -> Query:
+    """Single, auditable choke point for tenant isolation: every query
+    against a company-owned table (Employee, ModelVersion, ...) should be
+    built through this helper rather than `db.query(Model)` directly, so
+    a missing filter is a `grep`-able exception rather than a silent leak.
+    Requires a company-scoped user (see require_company_user)."""
+    if current_user.company_id is None:
+        raise HTTPException(status_code=403, detail="No company associated with this account")
+    return db.query(model).filter(model.company_id == current_user.company_id)
 
 def filter_by_department(current_user: User, department: Optional[str] = None) -> Optional[str]:
     """Returns department filter based on role.

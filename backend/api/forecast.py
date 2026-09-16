@@ -1,13 +1,15 @@
 """WorkforceIQ - Forecast API"""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 import random
+from database.models import User
+from auth.utils import get_current_user
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/forecast", tags=["forecast"])
 
 
 @router.get("/attrition")
-async def forecast_attrition(months: int = 12):
+async def forecast_attrition(months: int = 12, current_user: User = Depends(get_current_user)):
     """Forecast attrition rate for next N months using Prophet/ARIMA"""
     try:
         import pandas as pd
@@ -43,13 +45,13 @@ async def forecast_attrition(months: int = 12):
 
 
 @router.get("/headcount")
-async def forecast_headcount(months: int = 12):
+async def forecast_headcount(months: int = 12, current_user: User = Depends(get_current_user)):
     """Forecast headcount changes"""
     return _mock_headcount_forecast(months)
 
 
 @router.get("/burnout-risk")
-async def forecast_burnout():
+async def forecast_burnout(current_user: User = Depends(get_current_user)):
     """Forecast burnout risk by quarter"""
     return {
         "quarters": [

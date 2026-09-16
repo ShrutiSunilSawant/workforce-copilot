@@ -18,14 +18,10 @@ services:
         generateValue: true
       - key: CORS_ORIGINS
         sync: false  # set to your deployed Vercel URL, e.g. https://your-app.vercel.app
-      - key: SEED_ADMIN_EMAIL
+      - key: BOOTSTRAP_SUPERADMIN_EMAIL
+        sync: false  # your own platform-owner login — only used once, while the users table is empty
+      - key: BOOTSTRAP_SUPERADMIN_PASSWORD
         sync: false
-      - key: SEED_ADMIN_PASSWORD
-        sync: false
-      - key: SEED_MANAGER_PASSWORD
-        sync: false
-      - key: HR_DATA_CSV_PATH
-        value: ../datasets/hr_employee_data.csv
       - key: MCP_SERVER_PORT
         value: "8001"
       - key: MCP_SERVER_URL

@@ -31,7 +31,8 @@ class RAGPipeline:
     5. On query: embed question → find similar chunks → LLM answer
     """
 
-    def __init__(self):
+    def __init__(self, company_id: int):
+        self.company_id = company_id
         self._collection = None
         self._embedder = None
         self._loaded = False
@@ -42,12 +43,14 @@ class RAGPipeline:
         try:
             import chromadb
             from sentence_transformers import SentenceTransformer
-            
+
             Path(VECTOR_DB_PATH).mkdir(parents=True, exist_ok=True)
-            
+
             client = chromadb.PersistentClient(path=VECTOR_DB_PATH)
+            # One collection per company — uploaded/queried documents from
+            # one company are never visible to another company's searches.
             self._collection = client.get_or_create_collection(
-                name="hr_documents",
+                name=f"hr_documents_company_{self.company_id}",
                 metadata={"hnsw:space": "cosine"},
             )
             
@@ -336,12 +339,13 @@ Answer:"""
         return {"status": "not_found"}
 
 
-@lru_cache(maxsize=1)
-def get_rag_pipeline() -> RAGPipeline:
-    return RAGPipeline()
+@lru_cache(maxsize=None)
+def get_rag_pipeline(company_id: int) -> RAGPipeline:
+    return RAGPipeline(company_id)
 
 
-# Seed with built-in HR knowledge on startup
+# Generic starter HR knowledge, lazily seeded into a company's collection the
+# first time they query it with zero documents of their own uploaded yet.
 DEFAULT_HR_KNOWLEDGE = """
 WORKFORCEIQ DEFAULT HR KNOWLEDGE BASE
 
@@ -368,9 +372,3 @@ Health insurance (medical, dental, vision) fully covered for employees. 401(k) w
 """
 
 
-def seed_default_knowledge():
-    """Add default HR knowledge to RAG pipeline on startup"""
-    pipeline = get_rag_pipeline()
-    if pipeline._collection and pipeline._collection.count() == 0:
-        logger.info("📚 Seeding default HR knowledge base...")
-        pipeline.add_text_directly(DEFAULT_HR_KNOWLEDGE, "WorkforceIQ Default HR Policies")

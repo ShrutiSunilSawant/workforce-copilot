@@ -31,6 +31,24 @@ anywhere (all LLM/NLP inference is local, free Hugging Face models).
 None of this blocks getting it live — it just means "free" here trades off reliability
 and AI-response quality, matching the tradeoff you chose earlier.
 
+## ⚠️ If you already deployed before the multi-tenant update
+
+The database schema changed (new `companies` table, new required `company_id` columns
+on `employees` and `model_versions`, seeded demo accounts removed in favor of a
+super-admin bootstrap). SQLAlchemy's `create_all()` only creates *missing* tables — it
+will not add the new columns to tables that already exist on your live Render Postgres
+instance. If you deploy this update on top of the old database as-is, the app will throw
+DB errors the first time it touches `employees` or `model_versions`.
+
+Since there's no real customer data yet (just the old seeded demo admin/employees), the
+simplest fix is to reset the database rather than write a migration:
+
+1. In Render, open your `workforceiq-db` Postgres instance → **Shell** (or connect with
+   `psql` using the External Connection String shown there).
+2. Run: `DROP TABLE IF EXISTS predictions, model_versions, employees, users, companies CASCADE;`
+3. Redeploy the backend service (or just restart it) — `init_db()` will recreate every
+   table with the new schema and bootstrap your `super_admin` account fresh.
+
 ## One-time prerequisites
 
 - A GitHub repo with this code pushed (see note below — this session left that step to you).
@@ -54,8 +72,9 @@ git push -u origin main
 2. Render will ask you to fill in the env vars marked `sync: false` in render.yaml:
    - `CORS_ORIGINS` — leave a placeholder for now (e.g. `http://localhost:5173`), you'll
      update it in Step 4 once you have the Vercel URL.
-   - `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_PASSWORD` — pick real
-     values now, **not** the `changeme-...` dev defaults.
+   - `BOOTSTRAP_SUPERADMIN_EMAIL`, `BOOTSTRAP_SUPERADMIN_PASSWORD` — this is **your own**
+     platform-owner login (not a company account). It only takes effect once, while the
+     users table is empty, so pick real values now.
    - `SECRET_KEY` and `DATABASE_URL` are generated/wired automatically by the blueprint.
 3. Deploy. Once live, note the backend URL Render gives you, e.g.
    `https://workforceiq-backend.onrender.com`.
@@ -95,18 +114,30 @@ testing against the prod backend). Save — Render will redeploy the service aut
 
 ## Step 5 — Verify end to end
 
-1. Open the Vercel URL, log in with the admin credentials you set in Step 2.
-2. Check the browser's Network tab: requests should go to
+1. Open the Vercel URL, log in with your `BOOTSTRAP_SUPERADMIN_EMAIL` / `_PASSWORD`.
+2. You should land on the **Companies** page (this account manages tenants — it doesn't
+   see any HR data itself). Create a company: fill in a company name plus that company's
+   first admin's name/email/password.
+3. Log out, log back in as that new company admin — you should now see the full
+   dashboard, scoped to that company only.
+4. Check the browser's Network tab: requests should go to
    `https://workforceiq-backend.onrender.com/api/...` and return 200, and the
    `wiq_token` cookie should be set (this only works because `ENV=production` makes the
    backend issue the cookie as `Secure; SameSite=None`, required for the cross-domain
    Vercel ↔ Render setup — see [backend/api/auth.py](backend/api/auth.py)).
-3. Try the Copilot, Sentiment, Forecast, Reports, and Agents pages — all should return
+5. Try the Copilot, Sentiment, Forecast, Reports, and Agents pages — all should return
    real (if terse, given `flan-t5-base`) responses rather than the offline fallback text.
+
+## Multi-company data isolation
+
+Every company's employees, uploaded RAG documents, and retrained attrition models are
+isolated from every other company's — enforced server-side by `company_id`, not just
+hidden in the UI. If you provision a second company to test this, its admin should see
+zero employees and zero documents until they upload their own.
 
 ## Rotating credentials later
 
 If you ever suspect the dev `.env` values leaked (they shouldn't have — `.env` is
-gitignored — but the seed passwords were visible in this conversation), rotate them in
-the Render dashboard's environment variables and restart the service. Existing sessions
-will be invalidated once you also change `SECRET_KEY`.
+gitignored), rotate `BOOTSTRAP_SUPERADMIN_PASSWORD` and each company admin's password in
+their own account settings. Rotating `SECRET_KEY` invalidates every existing login
+session platform-wide.

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Bot, TrendingUp, Brain, BarChart3, FileText, Users, BookOpen, ChevronLeft, ChevronRight, RefreshCw, LogOut, Activity } from "lucide-react";
+import { LayoutDashboard, Bot, TrendingUp, Brain, BarChart3, FileText, Users, BookOpen, ChevronLeft, ChevronRight, RefreshCw, LogOut, Activity, Building2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const NAV = [
@@ -20,9 +20,16 @@ const NAV = [
   ]},
 ];
 
+const SUPER_ADMIN_NAV = [
+  { group: "PLATFORM", items: [
+    { to: "/", icon: Building2, label: "Companies" },
+  ]},
+];
+
 export default function Sidebar({ open, onToggle }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const nav = user?.role === "super_admin" ? SUPER_ADMIN_NAV : NAV;
 
   const handleLogout = () => { logout(); navigate("/login"); };
 
@@ -54,7 +61,9 @@ export default function Sidebar({ open, onToggle }) {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-medium text-white truncate">{user.full_name}</p>
-              <p className="text-xs text-white capitalize">{user.role}</p>
+              <p className="text-xs text-white capitalize">
+                {user.role === "super_admin" ? "Platform Owner" : `${user.role}${user.company_name ? ` · ${user.company_name}` : ""}`}
+              </p>
             </div>
           </div>
         </div>
@@ -62,7 +71,7 @@ export default function Sidebar({ open, onToggle }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2">
-        {NAV.map(group => (
+        {nav.map(group => (
           <div key={group.group} className="mb-4">
             {open && <p className="text-xs text-gray-600 font-medium px-2 mb-1">{group.group}</p>}
             {group.items.map(item => (

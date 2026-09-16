@@ -35,6 +35,7 @@ def predict_attrition(
     over_time: str,
     years_since_last_promotion: int,
     environment_satisfaction: int,
+    company_id: int = None,
 ) -> dict:
     """
     Predict attrition risk for an employee based on their HR profile.
@@ -50,6 +51,8 @@ def predict_attrition(
         over_time: Whether employee works overtime - "Yes" or "No"
         years_since_last_promotion: Years elapsed since last promotion
         environment_satisfaction: Environment satisfaction score 1-4
+        company_id: The caller's company — uses that company's own trained
+            model if one exists, else the shared baseline model
     """
     try:
         from models.attrition_model import predict_attrition as _predict
@@ -64,7 +67,7 @@ def predict_attrition(
             "YearsSinceLastPromotion": years_since_last_promotion,
             "EnvironmentSatisfaction": environment_satisfaction,
         }
-        return _predict(employee_data)
+        return _predict(employee_data, company_id=company_id)
     except FileNotFoundError:
         return {
             "error": "Model not trained yet. Please run model training first via the Retraining page.",
@@ -96,17 +99,18 @@ def analyze_sentiment(text: str, department: str = "") -> dict:
 
 
 @mcp.tool()
-def query_hr_policy(question: str) -> dict:
+def query_hr_policy(question: str, company_id: int) -> dict:
     """
     Query the HR policy knowledge base using RAG (Retrieval-Augmented Generation).
-    Returns an answer grounded in uploaded HR policy documents.
+    Returns an answer grounded in that company's own uploaded HR policy documents.
 
     Args:
         question: A natural language question about HR policies, leave, benefits, etc.
+        company_id: The caller's company — only that company's documents are searched
     """
     try:
         from rag.pipeline import get_rag_pipeline
-        pipeline = get_rag_pipeline()
+        pipeline = get_rag_pipeline(company_id)
         result = pipeline.query(question)
         return {
             "answer": result.get("answer", "No relevant policy found."),
@@ -118,22 +122,26 @@ def query_hr_policy(question: str) -> dict:
 
 
 @mcp.tool()
-def get_workforce_stats() -> dict:
+def get_workforce_stats(company_id: int) -> dict:
     """
     Get current workforce-level statistics including attrition rate,
-    headcount, satisfaction scores, burnout rate, and risk counts.
-    Returns aggregated metrics across all departments.
+    headcount, satisfaction scores, burnout rate, and risk counts,
+    scoped to the caller's own company only.
+
+    Args:
+        company_id: The caller's company — stats are computed only from this company's employees
     """
     try:
         from database.connection import SessionLocal
         from database.models import Employee
         db = SessionLocal()
 
-        total = db.query(Employee).count()
-        attrition_count = db.query(Employee).filter(Employee.attrition == "Yes").count()
-        overtime_count = db.query(Employee).filter(Employee.over_time == "Yes").count()
+        base = db.query(Employee).filter(Employee.company_id == company_id)
+        total = base.count()
+        attrition_count = base.filter(Employee.attrition == "Yes").count()
+        overtime_count = db.query(Employee).filter(Employee.company_id == company_id, Employee.over_time == "Yes").count()
 
-        employees = db.query(Employee).all()
+        employees = db.query(Employee).filter(Employee.company_id == company_id).all()
         if employees:
             avg_satisfaction = sum(e.job_satisfaction for e in employees) / len(employees)
             avg_wlb = sum(e.work_life_balance for e in employees) / len(employees)
@@ -161,12 +169,14 @@ def get_workforce_stats() -> dict:
 
 
 @mcp.tool()
-def get_department_breakdown(department: str = "") -> dict:
+def get_department_breakdown(company_id: int, department: str = "") -> dict:
     """
-    Get attrition and satisfaction statistics broken down by department.
+    Get attrition and satisfaction statistics broken down by department,
+    scoped to the caller's own company only.
     Pass a specific department name to filter, or leave empty for all departments.
 
     Args:
+        company_id: The caller's company — only this company's employees are included
         department: Department name to filter (e.g. Engineering, Sales, HR). Empty = all.
     """
     try:
@@ -175,7 +185,7 @@ def get_department_breakdown(department: str = "") -> dict:
         from sqlalchemy import func
         db = SessionLocal()
 
-        query = db.query(Employee)
+        query = db.query(Employee).filter(Employee.company_id == company_id)
         if department:
             query = query.filter(Employee.department == department)
 
