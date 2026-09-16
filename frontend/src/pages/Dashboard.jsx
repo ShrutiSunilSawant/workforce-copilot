@@ -59,7 +59,33 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
+// Maps an employee's actual risk factors ("reasons") to specific actions,
+// instead of showing the same generic checklist for every employee.
+const ACTION_RULES = [
+  { match: /overtime/i, action: "Assess and reduce overtime workload" },
+  { match: /burnout|fatigue|engagement/i, action: "Enroll in burnout recovery program: mandatory PTO + workload rebalancing" },
+  { match: /satisfaction/i, action: "Schedule 1:1 with manager to address job satisfaction" },
+  { match: /promotion|growth|career/i, action: "Discuss career growth and promotion timeline" },
+  { match: /compensation|salary|market/i, action: "Review compensation against department benchmark" },
+  { match: /tenure/i, action: "Assign mentor and structured 90-day onboarding check-ins" },
+  { match: /training/i, action: "Enroll in relevant training/certification programs" },
+  { match: /work-life balance/i, action: "Review workload distribution and time-off usage" },
+  { match: /environment/i, action: "Gather feedback on team/workplace environment" },
+];
+
+function getRecommendedActions(emp) {
+  const actions = [];
+  for (const { match, action } of ACTION_RULES) {
+    if (emp.reasons.some(r => match.test(r)) && !actions.includes(action)) {
+      actions.push(action);
+    }
+  }
+  if (!actions.length) actions.push("Schedule 1:1 with manager this week");
+  return actions;
+}
+
 function EmployeeModal({ emp, onClose }) {
+  const recommendedActions = getRecommendedActions(emp);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)" }}>
       <div className="card w-full max-w-lg animate-slide-up" style={{ background: "#1a1f2e" }}>
@@ -126,12 +152,7 @@ function EmployeeModal({ emp, onClose }) {
         <div className="px-6 py-4">
           <p className="text-xs font-semibold text-white uppercase tracking-wide mb-3">Recommended Actions</p>
           <div className="space-y-2">
-            {[
-              "Schedule 1:1 with manager this week",
-              "Review compensation against department benchmark",
-              "Discuss career growth and promotion timeline",
-              "Assess and reduce overtime workload",
-            ].slice(0, emp.reasons.length > 2 ? 3 : 2).map((a, i) => (
+            {recommendedActions.map((a, i) => (
               <div key={i} className="flex items-start gap-2 text-xs text-white">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-300 flex-shrink-0 mt-1.5" />
                 {a}
